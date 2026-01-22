@@ -43,4 +43,4 @@ This list not exhaustive but gives a real clue about the richness of the copula 
 
 - **tscopula**: [Time Series Copula Models](https://cran.r-project.org/web/packages/tscopula/index.html)
 
-- **xvine**: [X-Vine Models for Multivariate Extremes](https://github.com/JeongjinLee88/Xvine)
+- **Xvine**: [X-Vine Models for Multivariate Extremes](https://github.com/JeongjinLee88/Xvine)
