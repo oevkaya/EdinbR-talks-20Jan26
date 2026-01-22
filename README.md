@@ -42,3 +42,5 @@ This list not exhaustive but gives a real clue about the richness of the copula 
 - **mdgc**:	[Missing Data Imputation Using Gaussian Copulas](https://cran.r-project.org/web/packages/mdgc/index.html)
 
 - **tscopula**: [Time Series Copula Models](https://cran.r-project.org/web/packages/tscopula/index.html)
+
+- **xvine**: [X-Vine Models for Multivariate Extremes](https://github.com/JeongjinLee88/Xvine)
