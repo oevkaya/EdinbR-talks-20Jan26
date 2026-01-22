@@ -1,0 +1,232 @@
+---
+title: "Vine Copula Modeling & Interpretation"
+author: "Ozan Evkaya"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  echo = TRUE, warning = FALSE, message = FALSE
+)
+```
+
+## Short Demo on Vine Copula modeling 
+
+This document demonstrates a step-by-step vine copula analysis using the rvinecopulib package in R. Vine copulas allow flexible modeling of multivariate dependencies via bivariate building blocks. The example uses a 6-dimensional financial returns dataset (simulated for illustration).
+
+We need to install the related packages if we have not done yet
+
+```{r}
+#Install if not already installed
+if (!requireNamespace("rvinecopulib", quietly = TRUE)) {
+install.packages("rvinecopulib")
+}
+library(rvinecopulib)
+
+library(MASS)
+```
+
+Herein, the rvinecopulib R package provides a modern API for vine copula modeling, including estimation, selection, simulation, and visualization.
+
+### Simulate a 6-Dimensional Dataset
+
+```{r}
+set.seed(123)
+n <- 1000
+
+# Example covariance matrix
+Sigma <- matrix(0.5, 6, 6)
+diag(Sigma) <- 1
+
+# Simulate multivariate normal returns
+raw_data <- mvrnorm(n, mu = rep(0, 6), Sigma = Sigma)
+
+# Convert each margin to uniform (empirical)
+data_u <- apply(raw_data, 2, function(x) ecdf(x)(x))
+
+# Display first rows
+head(data_u)
+
+```
+
+```{r}
+library(GGally)
+
+GGally::ggpairs(as.data.frame(raw_data))
+
+```
+
+
+### Compute Pseudo-Observations
+
+Vine copulas require data in the unit interval $[0,1]$, so we compute pseudo-observations. 
+
+```{r}
+U <- pseudo_obs(data_u)
+summary(U)
+```
+
+This transformation ranks the data and rescales them to $[0,1]$, suitable for copula estimation.
+
+### Fit a Vine Copula Model
+
+We fit a regular vine copula model using automatic structure and family selection:
+
+```{r}
+fit_vine <- vinecop(
+U,
+family_set = "all",   # try all copula families
+tree_crit = "tau",    # select tree structure by Kendall's tau
+cores = 2, # play with other parameters like allow_rotations = TRUE, family_set = "all"
+)
+
+summary(fit_vine)
+
+```
+
+- The `vinecop()` function automatically selects a vine structure and bivariate copula families.
+- The output includes fitted parameters, selected families, and model summaries.
+
+### Plot the Vine Structure Tree
+
+Visualizing the vine helps interpret pairwise dependencies across layers:
+
+```{r}
+#Install if not already installed
+if (!requireNamespace("ggraph", quietly = TRUE)) {
+install.packages("ggraph")
+}
+```
+
+
+```{r}
+plot(fit_vine, var_names = "legend", edge_labels = "family") 
+# play with other input parameters like tree = 1, var_names = "legend", edge_labels = "family"
+```
+
+This shows each tree’s conditional dependencies.
+
+### Simulation from the Fitted Vine Copula
+
+We can simulate new samples from the fitted model:
+
+```{r}
+set.seed(123)
+sim_U <- rvinecop(1000, fit_vine)
+
+# Convert uniform back to normal scores for interpretation
+sim_norm <- qnorm(sim_U)
+head(sim_norm)
+
+```
+
+This generates synthetic data with the same dependency structure. As a part of comparison, we can compare the Kendall’s tau matrices of empirical vs. fitted simulated data:
+
+```{r}
+tau_empirical <- cor(raw_data, method = "kendall")
+tau_simulated <- cor(sim_norm, method = "kendall")
+
+list(
+empirical_tau = round(tau_empirical, 2),
+simulated_tau = round(tau_simulated, 2)
+)
+```
+
+For the general interpretation as a starting point; 
+
+- **Structure & Trees**: Trees show how variables connect conditionally.
+- **Pair-Copula Families**: Selected copula families indicate the type/strength of dependence.
+- **Kendall’s Tau Consistency**: Look for alignment between empirical and fitted dependency measures.
+
+### Data Set implementation
+
+```{r}
+library(VineCopula)
+data(daxreturns)
+# Financial data
+df_financial <- daxreturns
+```
+
+
+```{r}
+# compute the empirical Kendall's tau matrix
+TauMatrix(df_financial)
+```
+
+Bivariate copula exploration 
+
+```{r}
+## Example 1: bivariate Gaussian copula
+u1 <- df_financial[, 1]
+v1 <- df_financial[, 2]
+
+# estimate parameters of Gaussian copula by inversion of Kendall's tau
+est1.tau <- BiCopEst(u1, v1, family = 1, method = "itau")
+est1.tau  # short overview
+summary(est1.tau)  # comprehensive overview
+str(est1.tau)  # see all contents of the object
+
+# check if parameter actually coincides with inversion of Kendall's tau
+tau1 <- cor(u1, v1, method = "kendall")
+all.equal(BiCopTau2Par(1, tau1), est1.tau$par)
+
+# maximum likelihood estimate for comparison
+est1.mle <- BiCopEst(u1, v1, family = 1, method = "mle")
+summary(est1.mle)
+```
+
+Vine copula implementation for the whole data set 
+
+```{r}
+# Choosing the first 6 variables for simplicity, limited rows for the visuals below
+daxreturns_6dim <- df_financial[1:250, 1:6]
+
+# Looking at the pairwise rough relationship 
+GGally::ggpairs(daxreturns_6dim)
+
+```
+
+```{r}
+# select the R-vine structure, families and parameters
+# using only the first 4 variables and the first 250 observations
+# we allow for the copula families: Gauss, t, Clayton, Gumbel, Frank and Joe
+RVM <- RVineStructureSelect(daxreturns_6dim, c(1:6), progress = TRUE)
+
+## see the object's content or a summary
+str(RVM)
+summary(RVM)
+```
+
+
+Plotting the contours 
+
+```{r}
+## inspect the fitted model using plots
+## Not run: plot(RVM)  # tree structure
+contour(RVM)  # contour plots of all pair-copulas
+```
+
+Focus on different Vine structure now 
+
+```{r}
+## estimate a C-vine copula model with only Clayton, Gumbel and Frank copulas
+CVM <- RVineStructureSelect(daxreturns_6dim, c(1:6), "CVine")
+
+summary(CVM)
+```
+
+Plotting the tree structure with the help of extra package below
+
+```{r}
+#Install if not already installed
+if (!requireNamespace("network", quietly = TRUE)) {
+install.packages("network")
+}
+library(network)
+
+RVineTreePlot(CVM, tree =  1, type = 2, edge.labels = "family-par")
+```
+
